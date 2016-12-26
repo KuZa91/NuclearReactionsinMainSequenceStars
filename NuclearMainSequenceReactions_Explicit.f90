@@ -19,11 +19,12 @@
     ! Variables !
 
   
-    integer (kind=4) :: i,wp,o,op
+    integer (kind=4) :: i,wp,o,op,imax,nreac
     
-    real (kind=8) :: t,dt,tend,Temp,Temp9,Temp9A,rho,cs1,cs3,cs4,cs12,cs14c,cs14o,cs16,TSTART,TSTOP,Z
+    real (kind=8) :: t,dt,dtapp,tend,Temp,Temp9,Temp9A,rho,cs1,cs3,cs4,cs12,cs14c,cs14o,cs16,TSTART,TSTOP,Z,prec
     ! abbundances are defined as vector so that during simulation second slot refer to step n and first slot to step n+1
     real (kind=8), dimension (2) :: y1,y3,y4,y12,y14,y16
+    real (kind=8), dimension (6) :: var
     
     character (len=1) :: c
     
@@ -38,7 +39,8 @@
 
     do while(opt)
 
-        t=0.
+        t = 0.
+        nreac = 6
 
 1   	write (*,*) '-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~'
         write (*,*) 'Please insert the structure central temperature in kelvins(>0)'
@@ -269,7 +271,7 @@
                     read (*,*) tend
                     ! The program will write on file on each 1000 steps
     	            if((tend<=0.).or.tend>1.) then
-		       write (*,*) 'Warning! Tend must be in [0,1] range!'
+		       write (*,*) 'Warning! Y1 must be in [0,1] range!'
         	       goto 15
    	            endif
                     ! Beginning of the numerical simulation
@@ -320,10 +322,288 @@
                end select
 
 
-          !
+          ! Simulation with Variable time lapse
           case (2) 
             
-           
+           ! Setting the initial time lapse of the simulation
+16             write (*,*) '-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~'
+               write (*,*) 'Please insert the initial time lapse used for the simulation in seconds'
+               read (*,*) dt
+    	       if(dt<=0) then
+		   write (*,*) 'Warning! Time lapse must be positive!'
+        	   goto 16
+   	       endif
+
+           ! Setting the percentual precision of the simulation
+17             write (*,*) '-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~'
+               write (*,*) 'Please insert the percentual variation of each steps in [0,1] range'
+               read (*,*) prec
+    	       if((prec<=0.).or.(prec>=1.)) then
+		   write (*,*) 'Warning! percentuals are in [0,1] range!'
+        	   goto 17
+   	       endif
+               
+    	       
+               ! Defining the ending condition
+18             write (*,*) '-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~'
+               write (*,*) 'Select the stop condition :'
+               write (*,*) '1 -  Simulate untill time Tend as been reached'
+               write (*,*) '2 -  Simulate untill hydrogen abundance has reached a value y1min'
+               write (*,*) '0 - Stop Program Execution'
+   	       write (*,*) '-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~'
+               write (*,*) 'Make your choice :'
+    	       read (*,*) op
+    	       if(op<0.or.op>2) then
+		    write (*,*) 'Warning ! Selected simulation isn`t available'
+        	    goto 18
+   	       endif
+              
+               Select case(op)
+               
+               ! Run untill Tend is reached
+
+               case (1)
+                    ! Setting the ending time of the simulation
+19                  write (*,*) '-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~'
+                    write (*,*) 'Please insert the time of ending for the simulation in years'
+                    read (*,*) tend
+    	            if(tend<=0) then
+		       write (*,*) 'Warning! Tend must be positive!'
+        	       goto 19
+   	            endif
+                    tend = tend * 31536000. 
+                   ! Beginning of the numerical simulation
+                    write (*,*) 'The numerical simulation has started !'
+                    ! Inizialization of system tyme for the determination of total time elapsed
+    	            call CPU_TIME(TSTART)
+    	            write (*,*) '-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~'
+                    i=0
+    	            do while (t.lt.tend)
+        	       ! The program will write on file on each wp steps
+                       if((i.eq.0).or.(i.eq.wp)) then
+                           write (1,101) (t/(31536000.)),y1(2),y3(2),y4(2),y12(2),y14(2),y16(2)
+                           i=0
+                       endif
+                       i = i + 1
+                       
+                       !calculating evolution as a function of the uncorrected dt
+
+        	       y1(1) = y1(2) + dt*rho*(-(3./2.)*(y1(2)**2.)*cs1 - y3(2)*y4(2)*cs4 + (y3(2)**2.)*cs3 &
+                       - (2.)*y1(2)*y12(2)*cs12 - (2.)*y1(2)*y14(2)*cs14c - (2.)*y1(2)*y14(2)*cs14o &
+                       -(2.)*y1(2)*y16(2)*cs16)
+                       
+                       y3(1) = y3(2) + dt*rho*(-(y3(2)**2.)*cs3 - y3(2)*y4(2)*cs4 + 0.5*(y1(2)**2.)*cs1)
+
+                       y4(1) = y4(2) + dt*rho*((0.5)*(y3(2)**2)*cs3 + y3(2)*y4(2)*cs4 + y1(2)*y14(2)*cs14c&
+                       + y1(2)*y16(2)*cs16)
+                       
+                       y12(1) = y12(2) + dt*rho*(-y1(2)*y12(2)*cs12 + y1(2)*y14(2)*cs14c)
+
+                       y14(1) = y14(2) + dt*rho*(y1(2)*y12(2)*cs12 - y1(2)*y14(2)*cs14c - y1(2)*y14(2)*cs14o &
+                       + y1(2)*y16(2)*cs16)
+                       
+                       y16(1) = y16(2) + dt*rho*(- y1(2)*y16(2)*cs16 + y1(2)*y14(2)*cs14o)
+
+                       !calculating percentual variation due to the used dt
+
+                       if(y1(2)>(0.)) then
+                           var(1) = ABS((y1(1) - y1(2))/y1(2))
+                       else
+                           var(1)=prec
+                       endif
+
+                       if(y3(2)>(0.)) then
+                           var(2) = ABS((y3(1) - y3(2))/y3(2))
+                       else
+                           var(2) = prec
+                       endif
+
+		       if(y4(2)>(0.)) then
+                           var(3) = ABS((y4(1) - y4(2))/y4(2))
+                       else
+			   var(3) = prec
+		       endif
+   
+                       if(y12(2)>(0.)) then
+                           var(4) = ABS((y12(1) - y12(2))/y12(2))
+		       else
+                           var(4) = prec
+                       endif
+ 
+                       if(y14(2)>(0.)) then
+                           var(5) = ABS((y14(1) - y14(2))/y14(2))
+                       else
+	                   var(5) = prec
+                       endif
+                       
+                       if(y16(2)>(0.)) then
+                           var(6) = ABS((y16(1) - y16(2))/y16(2))
+                       else
+			   var(6) = prec
+                       endif
+
+                       !pointing the index to the maximum value of variation of the var array
+
+                       call maxarray (var,nreac,imax)
+
+                       !defining the correct time interval dt for having a percentual variaction eguals to prec
+		       
+                       dtapp = (dt*prec)/var(imax)
+                       dt = dtapp
+                       t = t + dt
+                       if(t>tend) t=tend
+                       
+                       !calculating evolution as a function of the corrected dt interval
+
+                       y1(1) = y1(2) + dt*rho*(-(3./2.)*(y1(2)**2.)*cs1 - y3(2)*y4(2)*cs4 + (y3(2)**2.)*cs3 &
+                       - (2.)*y1(2)*y12(2)*cs12 - (2.)*y1(2)*y14(2)*cs14c - (2.)*y1(2)*y14(2)*cs14o &
+                       -(2.)*y1(2)*y16(2)*cs16)
+                       
+                       y3(1) = y3(2) + dt*rho*(-(y3(2)**2.)*cs3 - y3(2)*y4(2)*cs4 + 0.5*(y1(2)**2.)*cs1)
+
+                       y4(1) = y4(2) + dt*rho*((0.5)*(y3(2)**2)*cs3 + y3(2)*y4(2)*cs4 + y1(2)*y14(2)*cs14c&
+                       + y1(2)*y16(2)*cs16)
+                       
+                       y12(1) = y12(2) + dt*rho*(-y1(2)*y12(2)*cs12 + y1(2)*y14(2)*cs14c)
+
+                       y14(1) = y14(2) + dt*rho*(y1(2)*y12(2)*cs12 - y1(2)*y14(2)*cs14c - y1(2)*y14(2)*cs14o &
+                       + y1(2)*y16(2)*cs16)
+                       
+                       y16(1) = y16(2) + dt*rho*(- y1(2)*y16(2)*cs16 + y1(2)*y14(2)*cs14o)
+
+                       y1(2) = y1(1)
+                       y3(2) = y3(1)
+                       y4(2) = y4(1)
+                       y12(2) = y12(1)
+                       y14(2) = y14(1)
+                       y16(2) = y16(1)
+
+    	            end do
+
+               ! Run untill the hydrogen abundance has reached a value y1min 
+
+               case (2) 
+                    ! Setting the minimum value of y1
+20                  write (*,*) '-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~'
+                    write (*,*) 'Please insert the minimum abbundance y1 that has to be reached in the simulation'
+                    read (*,*) tend
+    	            if((tend<=0.).or.tend>1.) then
+		       write (*,*) 'Warning! Y1 must be in [0,1] range!'
+        	       goto 20
+   	            endif
+                    ! Beginning of the numerical simulation
+                    write (*,*) 'The numerical simulation has started !'
+                    ! Inizialization of system tyme for the determination of total time elapsed
+    	            call CPU_TIME(TSTART)
+    	            write (*,*) '-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~'
+                    i=0
+    	            do while (y1(2).gt.tend)
+                       ! The program will write on file on each wp steps
+        	       if((i.eq.0).or.(i.eq.wp)) then
+                           write (1,101) (t/31536000.),y1(2),y3(2),y4(2),y12(2),y14(2),y16(2)
+                           i=0
+                       endif
+
+                       i = i + 1
+
+        	       !calculating evolution as a function of the uncorrected dt
+
+        	       y1(1) = y1(2) + dt*rho*(-(3./2.)*(y1(2)**2.)*cs1 - y3(2)*y4(2)*cs4 + (y3(2)**2.)*cs3 &
+                       - (2.)*y1(2)*y12(2)*cs12 - (2.)*y1(2)*y14(2)*cs14c - (2.)*y1(2)*y14(2)*cs14o &
+                       -(2.)*y1(2)*y16(2)*cs16)
+                       
+                       y3(1) = y3(2) + dt*rho*(-(y3(2)**2.)*cs3 - y3(2)*y4(2)*cs4 + 0.5*(y1(2)**2.)*cs1)
+
+                       y4(1) = y4(2) + dt*rho*((0.5)*(y3(2)**2)*cs3 + y3(2)*y4(2)*cs4 + y1(2)*y14(2)*cs14c&
+                       + y1(2)*y16(2)*cs16)
+                   
+                       y12(1) = y12(2) + dt*rho*(-y1(2)*y12(2)*cs12 + y1(2)*y14(2)*cs14c)
+
+                       y14(1) = y14(2) + dt*rho*(y1(2)*y12(2)*cs12 - y1(2)*y14(2)*cs14c - y1(2)*y14(2)*cs14o &
+                       + y1(2)*y16(2)*cs16)
+                       
+                       y16(1) = y16(2) + dt*rho*(- y1(2)*y16(2)*cs16 + y1(2)*y14(2)*cs14o)
+
+                       !calculating percentual variation due to the used dt
+
+                       if(y1(2)>(0.)) then
+                           var(1) = ABS((y1(1) - y1(2))/y1(2))
+                       else
+                           var(1)=prec
+                       endif
+
+                       if(y3(2)>(0.)) then
+                           var(2) = ABS((y3(1) - y3(2))/y3(2))
+                       else
+                           var(2) = prec
+                       endif
+
+		       if(y4(2)>(0.)) then
+                           var(3) = ABS((y4(1) - y4(2))/y4(2))
+                       else
+			   var(3) = prec
+		       endif
+   
+                       if(y12(2)>(0.)) then
+                           var(4) = ABS((y12(1) - y12(2))/y12(2))
+		       else
+                           var(4) = prec
+                       endif
+ 
+                       if(y14(2)>(0.)) then
+                           var(5) = ABS((y14(1) - y14(2))/y14(2))
+                       else
+	                   var(5) = prec
+                       endif
+                       
+                       if(y16(2)>(0.)) then
+                           var(6) = ABS((y16(1) - y16(2))/y16(2))
+                       else
+			   var(6) = prec
+                       endif
+
+                       !pointing the index to the maximum value of variation of the var array
+
+                       call maxarray (var,nreac,imax)
+
+                       !defining the correct time interval dt for having a percentual variaction eguals to prec
+		       
+                       dtapp = (dt*prec)/var(imax)
+                       dt = dtapp
+                       t = t + dt
+ 
+                       !calculating evolution as a function of the corrected dt interval
+
+                       y1(1) = y1(2) + dt*rho*(-(3./2.)*(y1(2)**2.)*cs1 - y3(2)*y4(2)*cs4 + (y3(2)**2.)*cs3 &
+                       - (2.)*y1(2)*y12(2)*cs12 - (2.)*y1(2)*y14(2)*cs14c - (2.)*y1(2)*y14(2)*cs14o &
+                       -(2.)*y1(2)*y16(2)*cs16)
+                       
+                       y3(1) = y3(2) + dt*rho*(-(y3(2)**2.)*cs3 - y3(2)*y4(2)*cs4 + 0.5*(y1(2)**2.)*cs1)
+
+                       y4(1) = y4(2) + dt*rho*((0.5)*(y3(2)**2)*cs3 + y3(2)*y4(2)*cs4 + y1(2)*y14(2)*cs14c&
+                       + y1(2)*y16(2)*cs16)
+                       
+                       y12(1) = y12(2) + dt*rho*(-y1(2)*y12(2)*cs12 + y1(2)*y14(2)*cs14c)
+
+                       y14(1) = y14(2) + dt*rho*(y1(2)*y12(2)*cs12 - y1(2)*y14(2)*cs14c - y1(2)*y14(2)*cs14o &
+                       + y1(2)*y16(2)*cs16)
+                       
+                       y16(1) = y16(2) + dt*rho*(- y1(2)*y16(2)*cs16 + y1(2)*y14(2)*cs14o)
+
+                       y1(2) = y1(1)
+                       y3(2) = y3(1)
+                       y4(2) = y4(1)
+                       y12(2) = y12(1)
+                       y14(2) = y14(1)
+                       y16(2) = y16(1)
+    	            end do
+                    write (*,*) 'y1 has reached ',y1(2),' abundance after ',(t/31536000.),' years!'
+               !Ending program
+               case (0) 
+         
+	           goto 999
+
+               end select
                 
           
           !Ending program
@@ -465,5 +745,22 @@
         DEXP(-16.692/(Temp9**(1./3.))))
         return
         end
-
+  
+    !Subroutine for the calculation of the index pointing the maximum value of an array 
+    subroutine maxarray (Vec,nmax,imax)
+        integer (kind=4) :: nmax,imax,i
+        real (kind=8),dimension(nmax) :: Vec
+        real (kind=8) :: maxim
+        i=1
+        maxim=vec(i)
+        imax=1
+        do while(i<nmax)
+		i = i+1
+		if(vec(i)>maxim) then 
+			    maxim=vec(i)
+                            imax=i
+                endif
+	end do
+        return
+        end
 
